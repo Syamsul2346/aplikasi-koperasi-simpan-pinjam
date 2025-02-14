@@ -83,6 +83,9 @@ class Auth extends CI_Controller
 
     public function registration()
 {
+    // Ambil data provinsi langsung menggunakan query
+    $query = $this->db->get('provinces'); // Gantilah dengan tabel yang sesuai
+    $data['provinces'] = $query->result_array();  // Mengambil hasil query dan menyimpannya dalam $data
     // Aturan validasi form
     $this->form_validation->set_rules('name', 'Name', 'required|trim');
     $this->form_validation->set_rules('email', 'Email', 'required|trim|valid_email|is_unique[user.email]', [
@@ -101,32 +104,45 @@ class Auth extends CI_Controller
     $this->form_validation->set_rules('gender', 'Gender', 'required|trim|in_list[L,P]');
     $this->form_validation->set_rules('education', 'Education', 'required|trim');
 
+
+
     // Periksa apakah validasi berjalan dengan baik
     if ($this->form_validation->run() == FALSE) {
         // Jika validasi gagal, tampilkan kembali halaman registrasi
         $data['title'] = 'Web Login Registration';
-        $data['daerah'] = $this->wilayah->get_provinsi();
+        // $data['daerah'] = $this->wilayah->get_provinsi();
         $this->load->view('templates/auth_header', $data);
         $this->load->view('auth/registration', $data);
         $this->load->view('templates/auth_footer');
         echo validation_errors();
     } else {
-        // Gabungkan alamat berdasarkan input
-        $alamatGabungan = implode(', ', [
-            $this->input->post('desa', true),
-            $this->input->post('kecamatan', true),
-            $this->input->post('kabupaten', true),
-            $this->input->post('provinsi', true)
-        ]);
-        // Ambil data input
-        $email = htmlspecialchars($this->input->post('email', true));
+        // Ambil input tanggal dari form
+        $dob = $this->input->post('dob', true); // Ambil input tanggal
+        if (!empty($dob)) {
+            // Konversi format dd/mm/yyyy menjadi yyyy-mm-dd
+            $dob_formatted = date('Y-m-d', strtotime(str_replace('/', '-', $dob)));
+            // Tanggal untuk ditampilkan di form (format Indonesia)
+            $dob_display = date('d/m/Y', strtotime($dob_formatted));
+        } else {
+            $dob_formatted = null; // Jika kosong
+            $dob_display = ''; // Atau set $dob_display ke kosong jika tidak ada input
+        }
+
+        // Kirimkan $dob_display ke view
+        $data['dob_display'] = $dob_display; // Menambahkan $dob_display ke data view
+
+        // Ambil data input lainnya dan masukkan ke dalam array $data
         $data = [
             'name' => htmlspecialchars($this->input->post('name', true)),
-            'email' => $email,
+            'email' => $this->input->post('email', true),
             'phone' => htmlspecialchars($this->input->post('phone', true)),
             'ktp' => htmlspecialchars($this->input->post('ktp', true)),
-            'address' => htmlspecialchars($this->input->post('alamat', true)),
-            'dob' => htmlspecialchars($this->input->post('dob', true)),
+            'address' => htmlspecialchars($this->input->post('address', true)),
+            'province_id' => $this->input->post('province_id'),
+            'regency_id' => $this->input->post('regency_id'),
+            'district_id' => $this->input->post('district_id'),
+            'village_id' => $this->input->post('village_id'),
+            'dob' => $dob_formatted, // Menyimpan format Y-m-d
             'job' => htmlspecialchars($this->input->post('job', true)),
             'gender' => htmlspecialchars($this->input->post('gender', true)),
             'education' => htmlspecialchars($this->input->post('education', true)),
@@ -140,7 +156,7 @@ class Auth extends CI_Controller
         // Siapkan token
         $token = base64_encode(random_bytes(32));
         $user_token = [
-            'email' => $email,
+            'email' => $data['email'],
             'token' => $token,
             'date_created' => time()
         ];

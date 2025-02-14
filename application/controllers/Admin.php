@@ -8,6 +8,19 @@ class Admin extends CI_Controller
     {
 
         parent ::__construct();
+        $this->load->model("mdb");
+		$this->load->model("nasabah");
+		$this->load->model("keanggotaan");
+		$this->load->helper("form");
+		$this->load->helper("date");
+		$this->load->library('export');
+		$this->load->library('form_validation');
+		$this->load->model('trs');
+		// $this->trs->cekSimpananPokok('001');
+		if(!$this->trs->last_check_bunga()){
+			$this->trs->addBunga();
+		}
+		// $this->output->enable_profiler(TRUE);
         $this->load->model('ActivityLog_model', 'log_activity'); // Tambahkan ini
         is_logged_in();
     }
@@ -199,9 +212,6 @@ class Admin extends CI_Controller
         }
     }
 
-
-
-
     public function deleteMember($id)
     {
         // Hapus data member berdasarkan id
@@ -212,6 +222,375 @@ class Admin extends CI_Controller
         redirect('admin/members');
     }
 
+    public function nasabah($action = '', $id = '')
+    {
+        $data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+    
+        if ($this->input->is_ajax_request()) {
+            $this->output->enable_profiler(FALSE);
+            $this->load->library('datatables');
+            $this->datatables->select('id, kode, nama, tgl_masuk');
+            $this->datatables->from('nasabah');
+            $this->datatables->edit_column('nama', anchor('admin
+            /nasabah/detail/$1', '$2'), 'kode, nama');
+            $this->datatables->add_column('Action_data', 
+                anchor('admin/nasabah/edit/$1', 'EDIT', 'class="btn btn-warning btn-mini hidden-print"') . ' ' .
+                anchor('admin/nasabah/delete/$1', 'DELETE', ['class' => 'btn btn-danger btn-mini hidden-print', 'onClick' => 'return confirm(\'Apakah Anda benar-benar akan menghapus data ini?\')']), 
+            'id');
+            
+            $this->datatables->add_column('Action_Simpan/pinjam',
+                anchor('admin
+                /simpanan/add?kode=$1', 'SIMPAN', 'class="btn btn-success btn-mini hidden-print"') . ' ' .
+                anchor('admin
+                /simpanan/ambil?kode=$1', 'AMBIL', 'class="btn btn-info btn-mini hidden-print"') . ' ' .
+                anchor('admin
+                /pinjaman/add?kode=$1', 'PINJAM', 'class="btn btn-default btn-mini hidden-print"') . ' ' .
+                anchor('admin
+                /pinjaman/bayar?kode=$1', 'BAYAR', 'class="btn btn-inverse btn-mini hidden-print"'), 
+            'kode');
+            
+            echo $this->datatables->generate();
+        } else {
+            $this->form_validation->set_rules('nama', 'Nama anggota', 'trim|required');
+            $this->form_validation->set_rules('alamat', 'Alamat', 'trim');
+            $this->form_validation->set_rules('hp', 'HP', 'trim');
+            $this->form_validation->set_rules('keanggotaan_id', 'Keanggotaan', 'trim|required');
+            $this->form_validation->set_rules('tgl_masuk', 'Tanggal masuk', 'trim|required');
+            $this->form_validation->set_message('required', 'Harus diisi.');
+            $this->form_validation->set_message('is_unique', 'Sudah ada di database.');
+            
+            $data['title'] = 'Nasabah';
+            $data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+            
+            switch ($action) {
+                case 'add':
+                    $this->form_validation->set_rules('kode', 'Kode anggota', 'trim|required|is_unique[nasabah.kode]');
+                    if ($this->form_validation->run() == FALSE) {
+                        $this->_add('nasabah');
+                    } else {
+                        $this->mdb->add_nasabah();
+                        redirect('admin
+                        /nasabah');
+                    }
+                    break;
+                case 'edit':
+                    $this->form_validation->set_rules('kode', 'Kode anggota', 'trim|required|is_unique[nasabah.kode.id.' . $id . ']');
+                    if ($this->form_validation->run() == FALSE) {
+                        $this->_edit('nasabah', $id);
+                    } else {
+                        $this->mdb->edit_nasabah($id);
+                        redirect('admin
+                        /nasabah');
+                    }
+                    break;
+                case 'delete':
+                    $this->_delete('nasabah', $id);
+                    break;
+                case 'detail':
+                    $data['data'] = $id;
+                    $this->_template('nasabah/detail_nasabah', $data);
+                    break;
+                default:
+                    $this->load->view('templates/header', $data);
+                    $this->load->view('templates/sidebar', $data);
+                    $this->load->view('templates/topbar', $data);
+                    $this->load->view('admin/nasabah', $data);
+                    $this->load->view('templates/footer');
+                    break;
+            }
+        }
+    }
+    public function keanggotaan($action='', $id='')
+	{
+		$data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+		if($this->input->is_ajax_request()/*||$this->input->get('data')*/)
+		{
+			$this->output->enable_profiler(FALSE);
+			$this->load->library('datatables');
+	        $this->datatables->select('id, jenis,simpanan_pokok, simpanan_wajib, bunga_simpanan, denda_pinjaman, keterangan');
+	        $this->datatables->from('keanggotaan');
+	        $this->datatables->add_column('Action_data', anchor('admin
+            /keanggotaan/edit/$1','EDIT','class="btn btn-warning btn-mini hidden-print"').
+	        	anchor('admin
+                /keanggotaan/delete/$1','DELETE',array('class'=>'btn btn-danger btn-mini hidden-print', 'onClick'=>'return confirm(\'Apakah Anda benar-benar akan menghapus data ini?\')')), 'id');
+	        echo $this->datatables->generate();
+		}
+		else
+		{
+			$this->form_validation->set_rules('nama', 'Nama anggota', 'trim|required');
+			$this->form_validation->set_rules('alamat', 'Alamat', 'trim');
+			$this->form_validation->set_rules('hp', 'HP', 'trim');
+			$this->form_validation->set_rules('keanggotaan_id', 'Keanggotaan', 'trim|required');
+			$this->form_validation->set_rules('tgl_masuk', 'Tanggal masuk', 'trim|required');
+			$this->form_validation->set_message('required', 'Harus diisi.');
+			$this->form_validation->set_message('is_unique', 'Sudah ada didatabase.');
 
+			switch ($action) 
+			{
+				case 'add':
+					$this->form_validation->set_rules('kode', 'Kode anggota', 'trim|required|is_unique[keanggotaan.kode]');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_add('keanggotaan');
+					}
+					else
+					{
+						$this->mdb->add_nasabah();
+						redirect('admin
+                        /keanggotaan');
+					}
+					break;
+				case 'edit':
+					$this->form_validation->set_rules('kode', 'Kode anggota', 'trim|required|is_unique[keanggotaan.kode.id.'.$id.']');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_edit('keanggotaan',$id);
+					}
+					else
+					{
+						$this->mdb->edit_nasabah($id);
+						redirect('admin
+                        /keanggotaan');
+					}
+					break;
+				case 'delete':
+					$this->_delete('keanggotaan',$id);
+					break;
+				default:
+					$this->_template('keanggotaan/keanggotaan');
+					break;
+			}
+		}
+	}
+
+	public function simpanan($action='', $id='')
+	{
+		$data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+		if($this->input->is_ajax_request())
+		{
+			$this->output->enable_profiler(FALSE);
+			$this->load->library('datatables');
+
+	        if($this->input->get('jenis')) $this->datatables->where('simpanan.jenis', $this->input->get('jenis'));
+	        if($this->input->get('per')) $this->datatables->where('DATE_FORMAT(simpanan.tanggal, "%Y-%m") =', $this->input->get('per'));
+
+	        $this->datatables->select('nasabah.kode, nasabah.nama, simpanan.tanggal, simpanan.jumlah, simpanan.id, FORMAT(sum(simpanan.jumlah), 0) as jumlah', FALSE);
+	        $this->datatables->from('nasabah');
+
+	        $this->datatables->join('(select * from simpanan order by tanggal desc) as simpanan','simpanan.kode_nasabah=nasabah.kode');
+	        $this->datatables->group_by('simpanan.kode_nasabah');
+	        // $this->datatables->where('simpanan.kode_nasabah');
+	        $this->datatables->edit_column('nasabah.nama', anchor('admin
+            /simpanan/detail/$1','$2'), 'nasabah.kode, nasabah.nama');
+	        $this->datatables->edit_column('simpanan.jumlah', '<div style="text-align:right;">$1</div>', 'simpanan.jumlah');
+	        $this->datatables->edit_column('simpanan.id', anchor('admin
+            /simpanan/add?kode=$1','SIMPAN','class="btn btn-success btn-mini hidden-print"').' '.anchor('admin
+            /simpanan/ambil?kode=$1','AMBIL','class="btn btn-info btn-mini hidden-print"'), 'nasabah.kode');
+	        echo $this->datatables->generate();
+		}
+		else
+		{
+
+			switch ($action) 
+			{
+				case 'add':
+					$this->form_validation->set_rules('tanggal', 'Tanggal', 'trim|required');
+					$this->form_validation->set_rules('jenis', 'Jenis Simpanan', 'trim|required');
+					$this->form_validation->set_rules('nominal', 'Nominal', 'trim|required');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_add('simpanan');
+					}
+					else
+					{
+						$kode = $this->input->post('kode_nasabah');
+						$this->mdb->add_simpanan();
+						redirect('admin
+                        /simpanan/detail/'.$kode);
+					}
+					break;
+				case 'detail':
+					$data['kode'] = $id;
+					$this->_template('simpanan/detail_simpanan',$data);
+					break;
+				case 'ambil':
+					$this->form_validation->set_rules('tanggal', 'Tanggal', 'trim|required');
+					$this->form_validation->set_rules('nominal', 'Nominal', 'trim|required');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_template('simpanan/ambil_simpanan');
+					}
+					else
+					{
+						$this->mdb->ambil_simpanan();
+						redirect('admin
+                        /simpanan');
+					}
+					break;
+				case 'laporan':
+					if($this->input->get('export')){
+						header("Content-type: application/vnd.ms-excel");
+						header("Content-Disposition: attachment; filename=Laporan-Simpanan.xls");
+						$data['simpanan'] = $this->mdb->getLaporanSimpanan();
+						$this->load->view('simpanan/export',$data);
+					}else{
+						$this->_template('simpanan/laporan_simpanan');
+					}
+					break;
+				case 'delete':
+					$this->_delete('simpanan',$id);
+					break;
+				default:
+					$this->_template('simpanan/simpanan');
+					break;
+			}
+		}
+	}
+	
+	public function pinjaman($action='', $id='')
+	{
+		$data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+		if($this->input->is_ajax_request())
+		{
+			$this->output->enable_profiler(FALSE);
+			$this->load->library('datatables');
+			if($this->input->get('jenis')) if($this->input->get('jenis')) $this->db->where('pinjaman.jenis', $this->input->get('jenis'));
+			if($this->input->get('per')) $this->datatables->where('DATE_FORMAT(pinjaman.tanggal, "%Y-%m") =', $this->input->get('per'));
+	        $this->datatables->select('nasabah.kode, nasabah.nama, pinjaman.tanggal, pinjaman.jenis, FORMAT(pinjaman.jumlah, 0) as jumlah, pinjaman.lama, pinjaman.status, pinjaman.id, nasabah.kode', FALSE);
+	        $this->datatables->from('nasabah');
+	        $this->datatables->join('pinjaman','pinjaman.kode_nasabah=nasabah.kode');
+	        $this->datatables->edit_column('nasabah.nama', anchor('admin
+            /pinjaman/detail/$1','$2'), 'nasabah.kode, nasabah.nama');
+	        $this->datatables->edit_column('jumlah', '<div style="text-align:right;">$1</div>', 'jumlah');
+	        $this->datatables->edit_column('pinjaman.id', anchor('admin
+            /pinjaman/bayar?kode=$1','BAYAR','class="btn btn-info btn-mini hidden-print"'), 'nasabah.kode');
+	        echo $this->datatables->generate();
+		}
+		else
+		{
+			switch ($action) 
+			{
+				case 'add':
+					$this->form_validation->set_rules('tanggal', 'Tanggal', 'trim|required');
+					// $this->form_validation->set_rules('jenis', 'Jenis Simpanan', 'trim|required');
+					$this->form_validation->set_rules('bunga', 'Bunga Simpanan', 'trim|required');
+					$this->form_validation->set_rules('nominal', 'Nominal', 'trim|required');
+					$this->form_validation->set_rules('lama', 'Waktu angsuran', 'trim|required');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_add('pinjaman');
+					}
+					else
+					{
+						$this->mdb->add_pinjaman();
+						redirect('admin
+                        /pinjaman');
+					}
+					break;
+				case 'edit':
+					$this->form_validation->set_rules('tanggal', 'Tanggal', 'trim|required');
+					// $this->form_validation->set_rules('jenis', 'Jenis Simpanan', 'trim|required');
+					$this->form_validation->set_rules('bunga', 'Bunga Simpanan', 'trim|required');
+					$this->form_validation->set_rules('nominal', 'Nominal', 'trim|required');
+					$this->form_validation->set_rules('lama', 'Waktu angsuran', 'trim|required');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$data['pinjaman']=$this->mdb->formPinjam($id);
+						$this->_template('pinjaman/edit_pinjaman',$data);
+					}
+					else
+					{
+						$this->mdb->edit_pinjaman();
+						redirect('admin
+                        /pinjaman');
+					}
+					break;
+				case 'detail':
+					$data['kode'] = $id;
+					$this->_template('pinjaman/detail_pinjaman',$data);
+					break;
+				case 'bayar':
+					$this->form_validation->set_rules('tanggal', 'Tanggal', 'trim|required');
+					$this->form_validation->set_rules('cicilan_ke', 'Nominal', 'trim|required');
+					$this->form_validation->set_rules('nominal', 'Nominal', 'trim|required');
+					if ($this->form_validation->run() == FALSE)
+					{
+						$this->_template('pinjaman/bayar_pinjaman');
+					}
+					else
+					{
+						$this->mdb->bayarPinjaman();
+						redirect('admin
+                        /pinjaman');
+					}
+					break;
+				case 'delete':
+					$this->_delete('pinjaman',$id);
+					break;
+				case 'laporan':
+				if($this->input->get('export')){
+						header("Content-type: application/vnd.ms-excel");
+						header("Content-Disposition: attachment; filename=Laporan-Pinjaman.xls");
+						$data['pinjaman'] = $this->mdb->getLaporanPinjaman();
+						$this->load->view('pinjaman/export',$data);
+				}else{
+					$this->_template('pinjaman/laporan_pinjaman');
+				}
+					break;
+				default:
+					$this->_template('pinjaman/pinjaman');
+					break;
+			}
+		}
+	}
+
+	public function payroll($action='', $id='')
+	{
+		$data['user'] = $this->db->get_where('user', ['email' => $this->session->userdata('email')])->row_array();
+		if($this->input->is_ajax_request())
+		{
+			$this->output->enable_profiler(FALSE);
+			$this->load->library('datatables');
+	        $this->datatables->select('nasabah.nama,nasabah.kode, FORMAT(sukarela.jumlah, 0) as sukarela, FORMAT(srplus.jumlah, 0) as srplus, FORMAT(import_temp.amount, 0) as jkt', FALSE);
+	        $this->datatables->from('nasabah');
+	        $this->datatables->join('(SELECT kode_nasabah, sum(jumlah) as jumlah FROM `simpanan` where jenis = "Sukarela" group by kode_nasabah) as sukarela', 'sukarela.kode_nasabah=nasabah.kode');
+	        $this->datatables->join('(SELECT kode_nasabah, sum(jumlah) as jumlah FROM `simpanan` where jenis = "Surplus" group by kode_nasabah) as srplus', 'srplus.kode_nasabah=nasabah.kode');
+	        $this->datatables->join('import_temp', 'import_temp.kode=nasabah.kode', 'left');
+	        echo $this->datatables->generate();
+		}
+		else
+		{
+
+			switch ($action) 
+			{
+				case 'import':
+					$this->_add('payroll');
+					break;
+				case 'upload':
+					$config['upload_path'] = dirname($_SERVER["SCRIPT_FILENAME"])."/assets/";
+					$config['overwrite'] = true;
+					$config['allowed_types'] = '*';
+					$config['max_size']	= '1000000';
+
+					$this->load->library('upload', $config);
+
+					if ( ! $this->upload->do_upload('payroll'))
+					{
+						$error = array('error' => $this->upload->display_errors());
+						print_r($error);
+						// $this->_add('payroll');
+					}
+					else
+					{
+						$data['file'] = $this->upload->data();
+						$this->_template('payroll/overview', $data);
+					}
+					break;
+				default:
+					$this->_template('payroll/payroll');
+					break;
+			}
+		}
+	}
 
 }
